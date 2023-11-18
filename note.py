@@ -18,5 +18,11 @@ if temperatura1 > -20 and cisnienie1 > 980 and suma_opadu1 < 10 and predkosc_wia
 else:
     print('nie ok')
 
+    '''ocena warunkow'''
+
+    if temperatura > -20 and cisnienie is not None and cisnienie > 980 and suma_opadu < 10 and predkosc_wiatru < 100:
+        print('ok')
+    else:
+        print('nie ok')
 
 
