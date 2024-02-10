@@ -1,32 +1,20 @@
-from db import  create_list
-from functions import measure_point, downl_data, db_connection
-from datetime import datetime
+from functions import start
 
-''' wywolanie funkcji do stworzenia listy id stacji '''
+def main():
 
-id_list = create_list()
-conn = db_connection()
+    print('1 - Pobieranie danych pogodowych')
+    print('2 - Utworzenie tabeli stacji')
+    print('3 - Utworzenie gpkg')
+    x = input('Wybierz funkcje')
 
+    _start = start()
+    if x == '1':
+        _start.synop_data()
+    if x == '2':
+        _start.station_data()
+    elif x == '3':
+        n = input('podaj nazwę pliku')
+        _start.prepare_gpkg_from(output_name=n)
 
-''' petla wykonujaca funkcje przez wszystkie stacje zawarte w liscie '''
-
-for id in id_list:
-
-    var1 = downl_data(id)
-    current = measure_point(0, 0, 0, 0, "", 0)
-    current.add_atr(var1)
-    current.show_atr()
-    current.conditions()
-
-
-    conn.connect(
-
-        current.temperatura,
-        current.cisnienie,
-        current.suma_opadow,
-        current.predkosc_wiatru,
-        datetime.now(),
-        current.id_stacji
-    )
-
-
+if __name__ == '__main__':
+    main()
