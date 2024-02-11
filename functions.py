@@ -5,15 +5,12 @@ import pandas as pd
 from datetime import datetime
 from shapely.geometry import Point
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine, Column, Integer, DateTime, Numeric, Sequence, Text, select, MetaData, Table, and_
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, Column, Integer, DateTime, Numeric, Sequence, Text, ForeignKey, func
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 
 from db import create_id_list, create_name_list
 
-
-
-''' funkcja ktora pobiera dane z API za pomoca id stacji'''
-
+# funkcja ktora pobiera dane z API za pomoca id stacji
 def downl_data(id):
     var = requests.get(f'https://danepubliczne.imgw.pl/api/data/synop/id/{id}')
     data = var.json()
@@ -21,12 +18,10 @@ def downl_data(id):
     return var
 
 
-''' utworzenie klasy dla rejestrow w pierwszej tabeli'''
-
+# utworzenie klasy dla rejestrow w pierwszej tabeli
 class measure_point:
 
-    ''' nadaje atrybuty punktu pomiarowego '''
-
+    # nadaje atrybuty punktu pomiarowego
     def __init__(self, temperatura, cisnienie, suma_opadow, predkosc_wiatru, id_stacji, nazwa_msc):
         self.temperatura = temperatura
         self.cisnienie = cisnienie
@@ -36,8 +31,7 @@ class measure_point:
         self.nazwa_msc = nazwa_msc
 
 
-    ''' zwykly print '''
-
+    # zwykly print
     def show_atr(self):
         print(self.temperatura, self.cisnienie, self.suma_opadow, self.predkosc_wiatru, self.nazwa_msc)
 
@@ -63,8 +57,7 @@ class measure_point:
         return(temperatura, cisnienie, suma_opadow, predkosc_wiatru, id_stacji, nazwa_msc)
 
 
-    ''' funkcja porownujaca atrybuty danej stacji wzgledem okreslonych kryteriow'''
-
+    # funkcja porownujaca atrybuty danej stacji wzgledem okreslonych kryteriow
     def conditions(self):
         if (
                 self.temperatura > -20
@@ -78,8 +71,7 @@ class measure_point:
 
 
 
-''' definiowanie dwoch tabel '''
-
+# definiowanie dwoch tabel
 Base = declarative_base()
 class tab1(Base):
     __tablename__ = 'tab1'
@@ -99,12 +91,11 @@ class tab2(Base):
     __table_args__ = {'schema': 'db'}
 
     tab2_id = Column(Integer, Sequence('tab2_tab2_id_seq', schema='db'), primary_key=True)
-    nazwa_stacji = Column(Text)
+    nazwa_stacji = Column(Text, ForeignKey('db.tab1.nazwa_stacji'))
     latitude = Column(Numeric)
     longitude = Column(Numeric)
+    tab1 = relationship('tab1',uselist=False, foreign_keys=[nazwa_stacji])
 
-
-''' dwie klasy obslugujace polacznie z baza danych '''
 
 class tab1_connection:
     def __init__(self):
@@ -162,11 +153,10 @@ class tab2_connection:
             print('Koniec')
 
 
-''' klasa pobierajaca wspolrzedne miejscowosci z listy, za pomoca wikipedii'''
-
+# klasa pobierajaca wspolrzedne miejscowosci z listy, za pomoca wikipedii
 class coordinates:
     def get_coordinates_of(city: str) -> list[float, float]:
-        # pobranie strony internetowe
+        # pobranie stron internetowych
         adres_URL = f'https://pl.wikipedia.org/wiki/{city}'
         response = requests.get(url=adres_URL)
         response_html = BeautifulSoup(response.text, 'html.parser')
@@ -180,11 +170,10 @@ class coordinates:
         return [response_html_latitude, response_html_longitude]
 
 
-''' klasa reprezentujaca rejestry w drugiej tabeli '''
-
+# klasa reprezentujaca rejestry w drugiej tabeli
 class measure_point2:
 
-    ''' inicjowanie klasy, nadaje atrybuty '''
+    # inicjowanie klasy, nadaje atrybuty
 
     def __init__(self, nazwa_msc, latitude, longitude):
         self.nazwa_msc = nazwa_msc
@@ -194,7 +183,7 @@ class measure_point2:
 
 
 
-''' klasa ktora umozliwia operacje na tabelach '''
+# klasa ktora umozliwia operacje na tabelac
 class start:
 
     def __init__(self):
@@ -244,19 +233,25 @@ class start:
 
         Session = sessionmaker(bind=engine)
         session = Session()
+        # posrednie zapytanie, sortujace rejestry wzgledem najnowszej daty
+        _subquery = session.query(tab1.nazwa_stacji, func.max(tab1.time).label("latest_time")).group_by(
+            tab1.nazwa_stacji).subquery()
+        # glowne zapytanie, grupujące 3 atrybuty z tab2 i 2 z tab1
+        _query = session.query(tab2.latitude, tab2.longitude, tab2.nazwa_stacji, tab1.temp, tab1.time). \
+            join(tab1).filter(tab2.nazwa_stacji == tab1.nazwa_stacji).filter(tab1.time == _subquery.c.latest_time)
 
-        query = session.query(tab2.latitude, tab2.longitude)
-        df = pd.read_sql_query(query.statement, engine)
+        # wykonanie zapytania i zapis do zmiennej dataframe
+        df = pd.read_sql_query(_query.statement, engine)
 
         session.close()
 
+        # tworzenie geometrii z atrybutow lng i lat
+        # zip iteruje po dwoch listach jednoczesnie i laczy te elementy ze soba
         geometry = [Point(lon, lat) for lon, lat in zip(df['longitude'], df['latitude'])]
 
-        gdf = gpd.GeoDataFrame(geometry=geometry, crs="EPSG:4326")
+        # dataframe z geometrią
+        gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
 
+        # zapis do pliku
         gdf.to_file(f'{output_name}.gpkg', driver='GPKG')
-
-
-
-
 
